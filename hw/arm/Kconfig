@@ -434,3 +434,8 @@ config ARMSSE_CPUID
 
 config ARMSSE_MHU
     bool
+
+config MY_MACHINE
+    bool
+    select ARM_V7M
+    select CMSDK_APB_WATCHDOG
