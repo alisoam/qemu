@@ -45,7 +45,7 @@ static void my_uart_write(void *opaque, hwaddr addr, uint64_t val64, unsigned in
   uint32_t value = val64;
   unsigned char ch = value;
   switch (addr) {
-  case 4:
+  case 0:
     qemu_chr_fe_write_all(&s->chr, &ch, 1);
     return;
   default:

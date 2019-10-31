@@ -1,3 +1,5 @@
+#include "hw/arm/my_soc.h"
+
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "hw/arm/boot.h"
@@ -5,20 +7,16 @@
 #include "qemu/log.h"
 #include "exec/address-spaces.h"
 #include "sysemu/sysemu.h"
-#include "hw/arm/armv7m.h"
 #include "hw/misc/unimp.h"
 #include "cpu.h"
-#include "hw/arm/my_soc.h"
 
 
-
-#define MY_MACHINE_FLASH_SIZE (512 * 1024)
-#define MY_MACHIN_SRAM1_SIZE (64 * 1024)
 
 static void my_soc_initfn(Object *obj)
 {
   MySocState *s = MY_SOC(obj);
-   sysbus_init_child_obj(obj, "armv7m", &s->armv7m, sizeof(s->armv7m), TYPE_ARMV7M);
+  sysbus_init_child_obj(obj, "armv7m", &s->armv7m, sizeof(s->armv7m), TYPE_ARMV7M);
+  sysbus_init_child_obj(obj, "uart", &s->uart, sizeof(s->uart), TYPE_MY_UART);
 }
 
 static void my_soc_realize(DeviceState *dev_soc, Error **errp)
@@ -27,13 +25,13 @@ static void my_soc_realize(DeviceState *dev_soc, Error **errp)
   MemoryRegion *sram = g_new(MemoryRegion, 1);
   MemoryRegion *flash = g_new(MemoryRegion, 1);
   MemoryRegion *system_memory = get_system_memory();
-  memory_region_init_ram(flash, NULL, "my_soc.flash", MY_MACHINE_FLASH_SIZE, &error_fatal);
+  memory_region_init_ram(flash, NULL, "my_soc.flash", MY_SOC_FLASH_SIZE, &error_fatal);
   memory_region_set_readonly(flash, true);
   memory_region_add_subregion(system_memory, 0, flash);
-  memory_region_init_ram(sram, NULL, "my_soc.sram", MY_MACHIN_SRAM1_SIZE, &error_fatal);
-  memory_region_add_subregion(system_memory, 0x20000000, sram);
+  memory_region_init_ram(sram, NULL, "my_soc.sram", MY_SOC_SRAM1_SIZE, &error_fatal);
+  memory_region_add_subregion(system_memory, MY_SOC_SRAM1_ADDRESS, sram);
   DeviceState* armv7m = DEVICE(&s->armv7m);
-  qdev_prop_set_uint32(armv7m, "num-irq", NUM_IRQ_LINES);
+  qdev_prop_set_uint32(armv7m, "num-irq", MY_SOC_NUM_IRQ_LINES);
   qdev_prop_set_string(armv7m, "cpu-type", s->cpu_type);
   qdev_prop_set_bit(armv7m, "enable-bitband", true);
   object_property_set_link(OBJECT(&s->armv7m), OBJECT(get_system_memory()), "memory", &error_abort);
@@ -43,6 +41,16 @@ static void my_soc_realize(DeviceState *dev_soc, Error **errp)
     error_propagate(errp, err);
     return;
   }
+  DeviceState* dev = DEVICE(&(s->uart));
+  qdev_prop_set_chr(dev, "chardev", serial_hd(0));
+  object_property_set_bool(OBJECT(&(s->uart)), true, "realized", &err);
+  if (err != NULL) {
+    error_propagate(errp, err);
+    return;
+  }
+  SysBusDevice* busdev = SYS_BUS_DEVICE(dev);
+  sysbus_mmio_map(busdev, 0, MY_SOC_UART_ADDRESS);
+  sysbus_connect_irq(busdev, 0, qdev_get_gpio_in(armv7m, MY_SOC_UART_IRQ));
 }
 
 static Property my_soc_properties[] = {
