@@ -18,24 +18,20 @@
 static void my_soc_initfn(Object *obj)
 {
   MySocState *s = MY_SOC(obj);
-  sysbus_init_child_obj(obj, "armv7m", &s->armv7m, sizeof(s->armv7m), TYPE_ARMV7M);
+   sysbus_init_child_obj(obj, "armv7m", &s->armv7m, sizeof(s->armv7m), TYPE_ARMV7M);
 }
 
 static void my_soc_realize(DeviceState *dev_soc, Error **errp)
 {
   MySocState *s = MY_SOC(dev_soc);
-
   MemoryRegion *sram = g_new(MemoryRegion, 1);
   MemoryRegion *flash = g_new(MemoryRegion, 1);
   MemoryRegion *system_memory = get_system_memory();
-
   memory_region_init_ram(flash, NULL, "my_soc.flash", MY_MACHINE_FLASH_SIZE, &error_fatal);
   memory_region_set_readonly(flash, true);
   memory_region_add_subregion(system_memory, 0, flash);
-
   memory_region_init_ram(sram, NULL, "my_soc.sram", MY_MACHIN_SRAM1_SIZE, &error_fatal);
   memory_region_add_subregion(system_memory, 0x20000000, sram);
-
   DeviceState* armv7m = DEVICE(&s->armv7m);
   qdev_prop_set_uint32(armv7m, "num-irq", NUM_IRQ_LINES);
   qdev_prop_set_string(armv7m, "cpu-type", s->cpu_type);
