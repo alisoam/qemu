@@ -8,33 +8,19 @@
 #include "hw/arm/armv7m.h"
 #include "hw/misc/unimp.h"
 #include "cpu.h"
+#include "hw/arm/my_soc.h"
 
-#include "hw/char/my_uart.h"
 
 
 #define MY_MACHINE_FLASH_SIZE (512 * 1024)
 #define MY_MACHIN_SRAM1_SIZE (64 * 1024)
 
-#define NUM_IRQ_LINES 64
-
-#define TYPE_MY_SOC "my-soc"
-#define MY_SOC(obj) OBJECT_CHECK(MySocState, (obj), TYPE_MY_SOC)
-
-typedef struct {
-
-  SysBusDevice parent_obj;
-
-  char *cpu_type;
-
-  ARMv7MState armv7m;
-
-} MySocState;
-
 static void my_soc_initfn(Object *obj)
 {
   MySocState *s = MY_SOC(obj);
-  sysbus_init_child_obj(obj, "armv7m", &s->armv7m, sizeof(s->armv7m), TYPE_ARMV7M);  
+  sysbus_init_child_obj(obj, "armv7m", &s->armv7m, sizeof(s->armv7m), TYPE_ARMV7M);
 }
+
 static void my_soc_realize(DeviceState *dev_soc, Error **errp)
 {
   MySocState *s = MY_SOC(dev_soc);
