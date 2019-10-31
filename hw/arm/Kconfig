@@ -435,8 +435,14 @@ config ARMSSE_CPUID
 config ARMSSE_MHU
     bool
 
+config MY_SOC
+    bool
+    select ARM_V7M
+    select MY_UART
+
 config MY_MACHINE
     bool
     select ARM_V7M
     select CMSDK_APB_WATCHDOG
+    select MY_SOC
     select MY_UART
