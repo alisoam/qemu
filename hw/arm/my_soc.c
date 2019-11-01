@@ -41,6 +41,7 @@ static void my_soc_realize(DeviceState *dev_soc, Error **errp)
     error_propagate(errp, err);
     return;
   }
+  system_clock_scale = 1000;
   DeviceState* dev = DEVICE(&(s->uart));
   qdev_prop_set_chr(dev, "chardev", serial_hd(0));
   object_property_set_bool(OBJECT(&(s->uart)), true, "realized", &err);
