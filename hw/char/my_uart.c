@@ -3,6 +3,13 @@
 #include "qemu/log.h"
 #include "qemu/module.h"
 
+static int my_uart_can_receive(void *opaque)
+{
+  MyUartState *s = opaque;
+  if (s->rxDataValid)
+    return 0;
+  return 1;
+}
 
 static void my_uart_receive(void *opaque, const uint8_t *buf, int size)
 {
@@ -23,11 +30,12 @@ static void my_uart_reset(DeviceState *dev)
 static uint64_t my_uart_read(void *opaque, hwaddr addr, unsigned int size)
 {
   MyUartState *s = opaque;
+  uint64_t retValue;
   switch (addr) {
   case 0:
-    s->rxDataValid = 0;
-    uint64_t retValue = s->rxData;
+    retValue = s->rxData;
     qemu_set_irq(s->irq, 0);
+    s->rxDataValid = 0;
     qemu_chr_fe_accept_input(&s->chr);
     return retValue;
   case 4:
@@ -75,7 +83,7 @@ static void my_uart_init(Object *obj)
 static void my_uart_realize(DeviceState *dev, Error **errp)
 {
   MyUartState *s = MY_UART(dev);
-  qemu_chr_fe_set_handlers(&s->chr, NULL, my_uart_receive, NULL, NULL, s, NULL, true);
+  qemu_chr_fe_set_handlers(&s->chr, my_uart_can_receive, my_uart_receive, NULL, NULL, s, NULL, true);
 }
 
 static void my_uart_class_init(ObjectClass *klass, void *data)

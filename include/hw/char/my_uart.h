@@ -23,4 +23,3 @@ typedef struct {
   qemu_irq irq;
 } MyUartState;
 #endif
-
