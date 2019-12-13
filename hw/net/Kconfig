@@ -78,6 +78,9 @@ config CADENCE
 config STELLARIS_ENET
     bool
 
+config MY_ENET
+    bool
+
 config LANCE
     bool
     select PCNET_COMMON

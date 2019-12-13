@@ -6,11 +6,19 @@
 #include "qemu/timer.h"
 #include "qemu/log.h"
 #include "exec/address-spaces.h"
+#include "net/net.h"
 #include "sysemu/sysemu.h"
 #include "hw/misc/unimp.h"
 #include "cpu.h"
 
 
+static void do_sys_reset(void *opaque, int n, int level)
+{
+  if (level)
+  {
+    qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
+  }
+}
 
 static void my_soc_initfn(Object *obj)
 {
@@ -22,14 +30,21 @@ static void my_soc_initfn(Object *obj)
 static void my_soc_realize(DeviceState *dev_soc, Error **errp)
 {
   MySocState *s = MY_SOC(dev_soc);
-  MemoryRegion *sram = g_new(MemoryRegion, 1);
+  
   MemoryRegion *flash = g_new(MemoryRegion, 1);
+  MemoryRegion *sram1 = g_new(MemoryRegion, 1);
+  MemoryRegion *sram2 = g_new(MemoryRegion, 1);
   MemoryRegion *system_memory = get_system_memory();
+
   memory_region_init_ram(flash, NULL, "my_soc.flash", MY_SOC_FLASH_SIZE, &error_fatal);
   memory_region_set_readonly(flash, true);
   memory_region_add_subregion(system_memory, 0, flash);
-  memory_region_init_ram(sram, NULL, "my_soc.sram", MY_SOC_SRAM1_SIZE, &error_fatal);
-  memory_region_add_subregion(system_memory, MY_SOC_SRAM1_ADDRESS, sram);
+
+  memory_region_init_ram(sram1, NULL, "my_soc.sram1", MY_SOC_SRAM1_SIZE, &error_fatal);
+  memory_region_add_subregion(system_memory, MY_SOC_SRAM1_ADDRESS, sram1);
+  memory_region_init_ram(sram2, NULL, "my_soc.sram2", MY_SOC_SRAM2_SIZE, &error_fatal);
+  memory_region_add_subregion(system_memory, MY_SOC_SRAM2_ADDRESS, sram2);
+
   DeviceState* armv7m = DEVICE(&s->armv7m);
   qdev_prop_set_uint32(armv7m, "num-irq", MY_SOC_NUM_IRQ_LINES);
   qdev_prop_set_string(armv7m, "cpu-type", s->cpu_type);
@@ -41,7 +56,9 @@ static void my_soc_realize(DeviceState *dev_soc, Error **errp)
     error_propagate(errp, err);
     return;
   }
+  qdev_connect_gpio_out_named(DEVICE(&s->armv7m.nvic), "SYSRESETREQ", 0, qemu_allocate_irq(&do_sys_reset, NULL, 0));
   system_clock_scale = 1000;
+
   DeviceState* dev = DEVICE(&(s->uart));
   qdev_prop_set_chr(dev, "chardev", serial_hd(0));
   object_property_set_bool(OBJECT(&(s->uart)), true, "realized", &err);
@@ -52,6 +69,13 @@ static void my_soc_realize(DeviceState *dev_soc, Error **errp)
   SysBusDevice* busdev = SYS_BUS_DEVICE(dev);
   sysbus_mmio_map(busdev, 0, MY_SOC_UART_ADDRESS);
   sysbus_connect_irq(busdev, 0, qdev_get_gpio_in(armv7m, MY_SOC_UART_IRQ));
+
+  qemu_check_nic_model(&nd_table[0], "my_soc");
+  DeviceState* enet = qdev_create(NULL, "my_enet");
+  qdev_set_nic_properties(enet, &nd_table[0]);
+  qdev_init_nofail(enet);
+  sysbus_mmio_map(SYS_BUS_DEVICE(enet), 0, MY_SOC_ENET_ADDRESS);
+  sysbus_connect_irq(SYS_BUS_DEVICE(enet), 0, qdev_get_gpio_in(armv7m, MY_SOC_ENET_IRQ));
 }
 
 static Property my_soc_properties[] = {

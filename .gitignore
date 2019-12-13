@@ -160,3 +160,4 @@ trace-ust-all.c
 /target/arm/decode-sve.inc.c
 /build/
 .*.swp
+.vscode

@@ -19,6 +19,12 @@
 typedef struct {
   MySocState soc;
 } MyMachineState;
+
+// static void reset(void)
+// {
+//   printf("FUCK YOU ALL \n\n");
+// }
+
 static void myMachineInit(MachineState *ms)
 {
   MyMachineState *s = g_new0(MyMachineState, 1);
@@ -32,6 +38,7 @@ static void myMachineClassInit(MachineClass *mc)
 {
   mc->desc = "This is my machine!";
   mc->init = myMachineInit;
+  //  mc->reset = reset;
   mc->ignore_memory_transaction_failures = true;
   mc->no_parallel = 1;
   mc->no_floppy = 1;
