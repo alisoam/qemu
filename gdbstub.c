@@ -2352,6 +2352,7 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
 
     switch (line_buf[0]) {
     case '!':
+        printf("Extended Mode\n");
         put_packet(s, "OK");
         break;
     case '?':
@@ -2564,6 +2565,10 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
             };
             cmd_parser = &gen_set_cmd_desc;
         }
+        break;
+    case 'r':
+    case 'R':
+        printf("RESET\n\n\n");
         break;
     default:
         /* put empty packet */

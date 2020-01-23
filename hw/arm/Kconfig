@@ -440,6 +440,7 @@ config MY_SOC
     select ARM_V7M
     select MY_UART
     select MY_ENET
+    select MY_DUAL_ENET
 
 config MY_MACHINE
     bool

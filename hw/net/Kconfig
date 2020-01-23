@@ -81,6 +81,9 @@ config STELLARIS_ENET
 config MY_ENET
     bool
 
+config MY_DUAL_ENET
+    bool
+
 config LANCE
     bool
     select PCNET_COMMON
