@@ -103,7 +103,6 @@ static void my_soc_realize(DeviceState *dev_soc, Error **errp)
   DeviceState* dual_enet = qdev_create(NULL, "my_dual_enet");
   qdev_set_dual_enet_nic_properties(dual_enet, &nd_table[0], &nd_table[1]);
   // qdev_set_nic_properties(dual_enet, &nd_table[0]);
-  printf("------------------------\n");
   qdev_init_nofail(dual_enet);
   sysbus_mmio_map(SYS_BUS_DEVICE(dual_enet), 0, MY_SOC_DUAL_ENET_ADDRESS);
   sysbus_connect_irq(SYS_BUS_DEVICE(dual_enet), 0, qdev_get_gpio_in(armv7m, MY_SOC_DUAL_ENET_IRQ));
