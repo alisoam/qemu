@@ -1,75 +1,26 @@
-#include "qemu/osdep.h"
-#include "exec/address-spaces.h"
-#include "hw/sysbus.h"
-#include "net/net.h"
-#include "qemu/log.h"
-#include "qemu/module.h"
-#include <zlib.h>
+#include "hw/net/my_dual_enet.h"
 
-//#define DEBUG_MY_DUAL_ENET 1
-
-#ifdef DEBUG_MY_DUAL_ENET
-#define DPRINTF(fmt, ...) \
-do { printf("my_dual_enet: " fmt , ## __VA_ARGS__); } while (0)
-#define BADF(fmt, ...) \
-do { fprintf(stderr, "mt_enet: error: " fmt , ## __VA_ARGS__); exit(1);} while (0)
-#else
-#define DPRINTF(fmt, ...) do {} while(0)
-#define BADF(fmt, ...) \
-do { fprintf(stderr, "my_dual_enet: error: " fmt , ## __VA_ARGS__);} while (0)
-#endif
-
-#define MY_DUAL_ENET_MAC1_REGISTER_OFFSET                    0x000
-#define MY_DUAL_ENET_MAC2_REGISTER_OFFSET                    0x004
-
-#define MY_DUAL_ENET_COMMAND_REGISTER_OFFSET                 0x100
-#define MY_DUAL_ENET_CONTROL_REGISTER_OFFSET                 0x104
-#define MY_DUAL_ENET_RX_DESCRIPTOR_REGISTER_OFFSET           0x108
-#define MY_DUAL_ENET_RX_STATUS_REGISTER_OFFSET               0x10C
-#define MY_DUAL_ENET_RX_DESCRIPTOR_NUMBER_REGISTER_OFFSET    0x110
-#define MY_DUAL_ENET_RX_PRODUCE_INDEX_REGISTER_OFFSET        0x114
-#define MY_DUAL_ENET_RX_CONSUME_INDEX_REGISTER_OFFSET        0x118
-#define MY_DUAL_ENET_TX_DESCRIPTOR_REGISTER_OFFSET           0x11C
-#define MY_DUAL_ENET_TX_STATUS_REGISTER_OFFSET               0x120
-#define MY_DUAL_ENET_TX_DESCRIPTOR_NUMBER_REGISTER_OFFSET    0x124
-#define MY_DUAL_ENET_TX_PRODUCE_INDEX_REGISTER_OFFSET        0x128
-#define MY_DUAL_ENET_TX_CONSUME_INDEX_REGISTER_OFFSET        0x12C
-
-#define MY_DUAL_ENET_INT_STATUS_REGISTER_OFFSET              0xFE0
-#define MY_DUAL_ENET_INT_ENABLE_REGISTER_OFFSET              0xFE4
-#define MY_DUAL_ENET_INT_CLEAR_REGISTER_OFFSET               0xFE8
-
-#define NIC_PORTS                                       2
-
-#define TYPE_MY_DUAL_ENET "my_dual_enet"
-#define MY_DUAL_ENET(obj) \
-    OBJECT_CHECK(my_dual_enet_state, (obj), TYPE_MY_DUAL_ENET)
-
-typedef struct {
-    SysBusDevice parent_obj;
-
-    bool rxEnable;
-    uint32_t rxDescriptor;
-    uint32_t rxStatus;
-    uint32_t rxDescriptorNumber;
-    uint32_t rxProduceIndex;
-    uint32_t rxConsumeIndex;
-
-    bool txEnable;
-    uint32_t txDescriptor;
-    uint32_t txStatus;
-    uint32_t txDescriptorNumber;
-    uint32_t txProduceIndex;
-    uint32_t txConsumeIndex;
-    uint32_t txBuffer[2048];
-    uint32_t irqStatus;
-    uint32_t irqEnable;
-
-    NICState *nic[NIC_PORTS];
-    NICConf conf[NIC_PORTS];
-    qemu_irq irq;
-    MemoryRegion mmio;
-} my_dual_enet_state;
+void qdev_set_dual_enet_nic_properties(DeviceState *dev, NICInfo *nd0, NICInfo *nd1)
+{
+    qdev_prop_set_macaddr(dev, "mac", nd0->macaddr.a);
+    qdev_prop_set_macaddr(dev, "mac", nd1->macaddr.a);
+    if (nd0->netdev) {
+        qdev_prop_set_netdev(dev, "netdev0", nd0->netdev);
+    }
+    if (nd1->netdev) {
+        qdev_prop_set_netdev(dev, "netdev1", nd1->netdev);
+    }
+    if (nd0->nvectors != DEV_NVECTORS_UNSPECIFIED &&
+        object_property_find(OBJECT(dev), "vectors", NULL)) {
+        qdev_prop_set_uint32(dev, "vectors", nd0->nvectors);
+    }
+    nd0->instantiated = 1;
+    if (nd1->nvectors != DEV_NVECTORS_UNSPECIFIED &&
+        object_property_find(OBJECT(dev), "vectors", NULL)) {
+        qdev_prop_set_uint32(dev, "vectors", nd1->nvectors);
+    }
+    nd1->instantiated = 1;
+}
 
 static void my_dual_enet_reset_rx(my_dual_enet_state *s)
 {
@@ -357,8 +308,10 @@ static void my_dual_enet_realize(DeviceState *dev, Error **errp)
     sysbus_init_mmio(sbd, &s->mmio);
     sysbus_init_irq(sbd, &s->irq);
 
+    
     for (unsigned int i = 0; i < NIC_PORTS; i++)
     {
+        memcpy(&(s->conf[i].macaddr), &(s->macaddr), sizeof(s->macaddr));
         qemu_macaddr_default_if_unset(&s->conf[i].macaddr);
         s->nic[i] = qemu_new_nic(&net_my_dual_enet_info[i], &s->conf[i], object_get_typename(OBJECT(dev)), dev->id, s);
         qemu_format_nic_info_str(qemu_get_queue(s->nic[i]), s->conf[i].macaddr.a);
@@ -366,8 +319,9 @@ static void my_dual_enet_realize(DeviceState *dev, Error **errp)
 }
 
 static Property my_dual_enet_properties[] = {
-    DEFINE_NIC_PROPERTIES(my_dual_enet_state, conf[0]),
-    DEFINE_NIC_PROPERTIES(my_dual_enet_state, conf[1]),
+    DEFINE_PROP_MACADDR("mac", my_dual_enet_state, macaddr),
+    DEFINE_PROP_NETDEV("netdev0", my_dual_enet_state, conf[0].peers),
+    DEFINE_PROP_NETDEV("netdev1", my_dual_enet_state, conf[1].peers),
     DEFINE_PROP_END_OF_LIST(),
 };
 
