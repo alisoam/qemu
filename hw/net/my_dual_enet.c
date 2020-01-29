@@ -35,6 +35,7 @@ static void my_dual_enet_reset_rx(my_dual_enet_state *s)
 static void my_dual_enet_reset_tx(my_dual_enet_state *s)
 {
     s->txEnable = false;
+    s->txBufferIndex = 0;
     s->txDescriptorNumber = 0;
     s->txStatus = 0;
     s->txProduceIndex = 0;
@@ -52,7 +53,7 @@ static int my_dual_enet_can_receive(NetClientState *nc)
     return 1;
 }
 
-static ssize_t my_dual_enet_receive(NetClientState *nc, const uint8_t *buf, size_t size, unsigned int port)
+static ssize_t my_dual_enet_receive(NetClientState *nc, const uint8_t *buf, size_t size, uint8_t port)
 {
     if (size == 0)
         return 0;
@@ -77,12 +78,12 @@ static ssize_t my_dual_enet_receive(NetClientState *nc, const uint8_t *buf, size
     if (buffer_size >= bytes_to_receive)
     {
         address_space_write(&address_space_memory, buffer_address, MEMTXATTRS_UNSPECIFIED, buf, size);
-        address_space_write(&address_space_memory, buffer_address + size, MEMTXATTRS_UNSPECIFIED, (unsigned char *)&crc, 4);
-        address_space_write(&address_space_memory + 4, buffer_address + size, MEMTXATTRS_UNSPECIFIED, (unsigned char *)&crc, 4);
+        address_space_write(&address_space_memory, buffer_address + size, MEMTXATTRS_UNSPECIFIED, (unsigned char *)&port, 1);
+        address_space_write(&address_space_memory, buffer_address + size + 1, MEMTXATTRS_UNSPECIFIED, (unsigned char *)&crc, 4);
     }
     // TODO ELSE
     
-    uint32_t status_info = ((bytes_to_receive - 1) & 0x7FF) | ((port & 0x1U) << 24);
+    uint32_t status_info = ((bytes_to_receive - 1) & 0x7FF);
     // status_info = bswap32(status_info);
     address_space_write(&address_space_memory, status_address, MEMTXATTRS_UNSPECIFIED, (unsigned char *)&status_info, 4);
 
@@ -94,18 +95,17 @@ static ssize_t my_dual_enet_receive(NetClientState *nc, const uint8_t *buf, size
         s->irqStatus |= 1UL << 3;
         qemu_irq_pulse(s->irq);
     }
-
     return size;
 }
 
 static ssize_t my_dual_enet_receive1(NetClientState *nc, const uint8_t *buf, size_t size)
 {
-    return my_dual_enet_receive(nc, buf, size, 0U);
+    return my_dual_enet_receive(nc, buf, size, 0);
 }
 
 static ssize_t my_dual_enet_receive2(NetClientState *nc, const uint8_t *buf, size_t size)
 {
-    return my_dual_enet_receive(nc, buf, size, 1U);
+    return my_dual_enet_receive(nc, buf, size, 1);
 }
 
 static int my_dual_enet_can_send(my_dual_enet_state *s)
@@ -132,23 +132,41 @@ static void my_dual_enet_send(my_dual_enet_state *s)
         size_t buffer_size2 = ((control >> 12) & 0x7FF) + 1;
         size_t buffer_size = buffer_size1 + buffer_size2;
 
+        size_t tx_buffer_len = MY_DUAL_ENET_TX_BUFFER_SIZE - s->txBufferIndex;
+
         uint32_t buffer_address1;
         uint32_t buffer_address2;
         address_space_read(&address_space_memory, descriptor_address1, MEMTXATTRS_UNSPECIFIED, (unsigned char *)&buffer_address1, 4);
         address_space_read(&address_space_memory, descriptor_address2, MEMTXATTRS_UNSPECIFIED, (unsigned char *)&buffer_address2, 4);
-
-        
         // bytes_to_receive = bswap32(bytes_to_receive);
-        size_t bytes_to_send = MIN(buffer_size, sizeof(s->txBuffer));
-        size_t bytes_to_send1 = MIN(buffer_size1, sizeof(s->txBuffer));
+        size_t bytes_to_send = MIN(buffer_size, tx_buffer_len);
+        size_t bytes_to_send1 = MIN(buffer_size1, tx_buffer_len);
         size_t bytes_to_send2 = bytes_to_send - bytes_to_send1;
-        address_space_read(&address_space_memory, buffer_address1, MEMTXATTRS_UNSPECIFIED, (unsigned char *)s->txBuffer, bytes_to_send1);
-        address_space_read(&address_space_memory, buffer_address2, MEMTXATTRS_UNSPECIFIED, (unsigned char *)s->txBuffer + bytes_to_send1, bytes_to_send2);
+        uint8_t* send_buffer = s->txBuffer + s->txBufferIndex;
+        address_space_read(&address_space_memory, buffer_address1, MEMTXATTRS_UNSPECIFIED, send_buffer, bytes_to_send1);
+        address_space_read(&address_space_memory, buffer_address2, MEMTXATTRS_UNSPECIFIED, send_buffer + bytes_to_send1, bytes_to_send2);
+        s->txBufferIndex += bytes_to_send;
 
-        unsigned int port = (control >> 24) & 0x1;
-        qemu_send_packet(qemu_get_queue(s->nic[port]), (unsigned char *)s->txBuffer, bytes_to_send);
+        // printf("\tbuffer_address1: 0x%x, buffer_address2 0x%x\n", buffer_address1, buffer_address2);
+        // printf("\tbytes_to_send1: %lu, bytes_to_send2 %lu\n", bytes_to_send1, bytes_to_send2);
+        bool last_descriptor = (control >> 30) & 0x1;
+        if (last_descriptor)
+        {
+            uint8_t port = 0;
+            port = s->txBuffer[s->txBufferIndex - 1];
+            // printf("\t\tsend size: %u port: %hu\n", s->txBufferIndex - 1, port);
+            qemu_send_packet(qemu_get_queue(s->nic[port]), (unsigned char *)s->txBuffer, s->txBufferIndex - 1);
+            s->txBufferIndex = 0;
+        }
 
-        uint32_t status_info = (bytes_to_send - 1) & 0x7FF;
+        uint32_t status_info = 0;
+        bool tx_over_run = false;
+        if (bytes_to_send < buffer_size)
+        {
+            tx_over_run = false;
+            status_info |= (1U << 24);
+        }
+        status_info |= (bytes_to_send - 1) & 0xFFFFFF;
         // status_info = bswap32(status_info);
         address_space_write(&address_space_memory, status_address, MEMTXATTRS_UNSPECIFIED, (unsigned char *)&status_info, 4);
 
@@ -158,6 +176,8 @@ static void my_dual_enet_send(my_dual_enet_state *s)
         if (s->irqEnable & (1UL << 7) && control & (1UL << 31))
         {
             s->irqStatus |= 1UL << 7;
+            if (tx_over_run)
+                s->irqStatus |= 1UL << 24;
             qemu_irq_pulse(s->irq);
         }
     }
